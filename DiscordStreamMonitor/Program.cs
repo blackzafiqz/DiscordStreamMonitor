@@ -53,6 +53,9 @@ namespace DiscordStreamMonitor
             else
             {
                 var duration = DateTime.Now - user.StartedStream;
+                var userVoice = _client.GetGuild(state1.VoiceChannel.Guild.Id).GetUser(socketUser.Id);
+                if (userVoice.IsStreaming)
+                    return;
                 String text = $"{user.Name}({user.Nickname})\n" +
                     $"Started stream: {user.StartedStream}\n" +
                     $"Stopped stream: {DateTime.Now}\n" +
