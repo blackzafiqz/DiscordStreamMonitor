@@ -27,13 +27,20 @@ namespace DiscordStreamMonitor
 
         private async Task UserVoiceStateUpdated(SocketUser socketUser, SocketVoiceState state1, SocketVoiceState state2)
         {
-            if (state1.VoiceChannel.Name != Environment.GetEnvironmentVariable("ChannelName"))
-                return;
+            ulong guidId = state1.VoiceChannel?.Guild.Id ?? state2.VoiceChannel.Guild.Id;
+            if (state1.VoiceChannel != null)
+            {
+                if (state1.VoiceChannel.Name != Environment.GetEnvironmentVariable("ChannelName"))
+                    return;
+            }
+            else
+                if (state2.VoiceChannel.Name != Environment.GetEnvironmentVariable("ChannelName"))
+                    return;
 
             var user = _context.Users.Where(x => x.Id == socketUser.Id).FirstOrDefault();
             if (user == null)
             {
-                var userVoice = _client.GetGuild(state1.VoiceChannel.Guild.Id).GetUser(socketUser.Id);
+                var userVoice = _client.GetGuild(guidId).GetUser(socketUser.Id);
                 user = new User()
                 {
                     Id = socketUser.Id,
@@ -44,14 +51,10 @@ namespace DiscordStreamMonitor
                 await _context.Users.AddAsync(user);
             }
 
-            Stream lastStream = _context.Streams.Where(x => x.UserId == user.Id).OrderByDescending(x => x.Start).FirstOrDefault();
 
-            // first stream
-            if(lastStream==null)
+            if (state1.IsStreaming == false && state2.IsStreaming)
             {
-                var userVoice = _client.GetGuild(state1.VoiceChannel.Guild.Id).GetUser(socketUser.Id);
-                if (!userVoice.IsStreaming)
-                    return;
+                state2.VoiceChannel.GetUser(socketUser.Id);
                 Stream stream = new()
                 {
                     Start = DateTime.Now,
@@ -59,31 +62,20 @@ namespace DiscordStreamMonitor
                 };
                 string text = $"{user.Name}({user.Nickname})\n" +
                     $"Started stream: {DateTime.Now}";
-                var res = await state1.VoiceChannel.SendMessageAsync(text: text);
+                var res = await state2.VoiceChannel.SendMessageAsync(text: text);
                 stream.MessageId = res.Id;
                 await _context.Streams.AddAsync(stream);
             }
-            // new stream
-            else if(lastStream.End!=null)
+            else if (state1.IsStreaming && (!state2.IsStreaming || state2.VoiceChannel==null))
             {
-                var userVoice = _client.GetGuild(state1.VoiceChannel.Guild.Id).GetUser(socketUser.Id);
-                if (!userVoice.IsStreaming)
+                Stream lastStream = _context.Streams.Where(x => x.UserId == user.Id).OrderByDescending(x => x.Start).FirstOrDefault();
+                if (lastStream == null)
                     return;
-                Stream stream = new()
-                {
-                    Start = DateTime.Now,
-                    UserId = user.Id,
-                };
-                String text = $"{user.Name}({user.Nickname})\n" +
-                    $"Started stream: {DateTime.Now}";
-                var res = await state1.VoiceChannel.SendMessageAsync(text: text);
-                stream.MessageId = res.Id;
-                await _context.Streams.AddAsync(stream);
-            }
-            else
-            {
+                else
+                    if (lastStream.End != null)
+                    return;
                 var duration = DateTime.Now - lastStream.Start;
-                var userVoice = _client.GetGuild(state1.VoiceChannel.Guild.Id).GetUser(socketUser.Id);
+                var userVoice = _client.GetGuild(guidId).GetUser(socketUser.Id);
                 if (userVoice.IsStreaming)
                     return;
                 String text = $"{user.Name}({user.Nickname})\n" +
